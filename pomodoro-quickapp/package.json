@@ -1,0 +1,27 @@
+{
+  "name": "@aiot-project/vela-official-demo",
+  "version": "1.0.8",
+  "description": "",
+  "privateDesc": "official",
+  "author": "zhaoyinggang",
+  "engines": {
+    "node": ">=8.10"
+  },
+  "scripts": {
+    "start": "aiot server --watch --open-nuttx",
+    "build": "aiot build",
+    "release": "aiot release",
+    "server": "aiot server",
+    "watch": "aiot watch",
+    "lint": "eslint --format codeframe --fix --ext .ux,.js src/"
+  },
+  "devDependencies": {
+    "aiot-toolkit": "^1.0.12",
+    "babel-eslint": "^10.0.1",
+    "eslint": "^6.8.0",
+    "eslint-plugin-ux": "^0.0.4",
+    "less": "^4.1.1",
+    "less-loader": "^10.0.1",
+    "@aiot-toolkit/velasim": "^0.1.23"
+  }
+}

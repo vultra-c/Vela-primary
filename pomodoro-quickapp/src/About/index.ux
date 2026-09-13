@@ -1,0 +1,43 @@
+<template>
+  <div class="page">
+    <text class="title">番茄钟</text>
+    <text class="body">为小米手环 9 Pro (Vela) 制作的番茄工作法计时器。</text>
+    <text class="body">版本 1.0.0</text>
+    <text class="back" onclick="goBack">‹ 返回</text>
+  </div>
+</template>
+
+<script>
+export default {
+  goBack() {
+    this.$router.back()
+  }
+}
+</script>
+
+<style>
+.page {
+  flex-direction: column;
+  align-items: center;
+  background-color: #0b0e14;
+  width: 168px;
+  height: 240px;
+  padding: 20px 12px;
+}
+.title {
+  font-size: 18px;
+  color: #eaf1f8;
+  margin-bottom: 10px;
+}
+.body {
+  font-size: 12px;
+  color: #8fa3bd;
+  margin-bottom: 8px;
+  text-align: center;
+}
+.back {
+  margin-top: 12px;
+  font-size: 13px;
+  color: #3a8dd6;
+}
+</style>

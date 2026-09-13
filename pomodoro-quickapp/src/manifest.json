@@ -1,0 +1,51 @@
+{
+  "package": "org.pomodoro.band9pro",
+  "name": "番茄钟",
+  "versionName": "1.0.0",
+  "versionCode": 1,
+  "minPlatformVersion": 1000,
+  "icon": "/common/icon.png",
+  "deviceTypeList": [
+    "watch"
+  ],
+  "features": [
+    {
+      "name": "system.router"
+    },
+    {
+      "name": "system.app"
+    },
+    {
+      "name": "system.device"
+    },
+    {
+      "name": "system.configuration"
+    },
+    {
+      "name": "system.storage"
+    },
+    {
+      "name": "system.vibrator"
+    },
+    {
+      "name": "system.prompt"
+    },
+    {
+      "name": "system.audio"
+    }
+  ],
+  "config": {
+    "designWidth": 168
+  },
+  "router": {
+    "entry": "Home",
+    "pages": {
+      "Home": {
+        "component": "index"
+      },
+      "About": {
+        "component": "index"
+      }
+    }
+  }
+}

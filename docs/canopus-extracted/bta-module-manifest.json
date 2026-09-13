@@ -1,0 +1,36 @@
+{
+  "item": {
+    "id": "canopus_bluetoothaudio",
+    "restype": "canopus",
+    "name": "Canopus 蓝牙音频扩展模块",
+    "description": "一个Canopus模块，为不支持连接蓝牙耳机的小米Vela穿戴设备补全蓝牙音频能力。",
+    "preview": [
+      "media/20260818222938_11.png",
+      "media/20260818223131_12.png"
+    ],
+    "icon": "media/Frame 6-2 1.png",
+    "cover": "media/Frame 11.png",
+    "author": [
+      {
+        "name": "Searchstars",
+        "bindABAccount": true
+      }
+    ]
+  },
+  "links": [
+    {
+      "title": "使用文档",
+      "url": "https://abox.run/docs/usage/canopus/bluetooth-audio",
+      "icon": "BookOpenText"
+    }
+  ],
+  "downloads": {
+    "xmb10p": {
+      "version": "1.0.1",
+      "file_name": "downloads/bta-module-installer-prod-10p-043+036.v65537.bin"
+    }
+  },
+  "ext": {
+    "enableAstroBoxCreatorFeatures": true
+  }
+}

@@ -1,0 +1,37 @@
+[workspace]
+resolver = "2"
+members = ["."]
+
+[package]
+name = "pomodoro-canopus"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0"
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+# The Canopus framework (closed source) is referenced by relative path, exactly
+# like the BluetoothAudio reference module does. Place its repo next to this
+# project folder:
+#   git clone https://github.com/AstralSightStudios/Canopus
+# canopus-abi / canopus-runtime / canopus-target-private are internal crates of
+# that framework; without them, build with `--no-default-features` (host mode,
+# state machine unit tests only).
+# canopus-abi = { path = "../Canopus/canopus-abi" }
+# canopus-runtime = { path = "../Canopus/canopus-runtime" }
+# canopus-target-private = { path = "../Canopus/crates/canopus-target-private", features = ["target-xiaomi-band-9-pro-3.1.175"] }
+
+[features]
+default = []
+# Selected by scripts/build-device.sh together with the target triple
+# thumbv8m.main-none-eabi (cortex-m33) and the framework's ELF verifier.
+device = []
+
+[profile.release]
+panic = "abort"
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+strip = "debuginfo"

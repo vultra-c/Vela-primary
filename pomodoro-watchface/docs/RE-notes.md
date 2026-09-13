@@ -155,16 +155,178 @@ lvgl.Object/Label/Image/Arc/Timer/Font, lvgl.HOR_RES/VER_RES/OPA/FLAG/EVENT/ALIG
 dataman.subscribe("timeSecond"|"timeHour"|"systemStatusBattery"|..., obj, cb)
 topic.subscribe("sensor_accel", 0, cb)        -- sensor topics
 vibrator.start{...} / vibrator.cancel(...)    -- vibration notifications
-os.time/os.date, io, debug, string, math      -- full Lua 5.4 stdlib
 pageOnResume()/pageOnPause()                  -- face lifecycle
 SCRIPT_PATH                                   -- face data dir
 ```
+
+### Correction: the Lua standard libraries *are* linked in
+
+Earlier notes here claimed "no `io`/`os`, watchface Lua is sandboxed", on the
+grounds that the image contains no `luaopen_io`/`luaopen_os` strings. That
+reasoning was invalid: `luaL_openlibs` calls `luaopen_io` as a **direct symbol
+reference**, so no such string would exist even when the library is present.
+Searching for what the libraries actually emit instead:
+
+| liolib / loslib / loadlib marker | occurrences |
+|---|---|
+| `FILE*` (`LUA_FILEHANDLE`, the file metatable) | 1 |
+| `attempt to use a closed file` | 1 |
+| `rwa` (`l_checkmode` mode characters) | 1 |
+| `cannot open file '%s' (%s)` | 1 |
+| `invalid mode` | 1 |
+| `date result cannot be represented in this installation` | 1 |
+| `_LOADED` / `_PRELOAD` / `luaopen_%s` / the croot "no file" error | 1 each |
+| `coroutine`, `math`, `debug`, `table`, `string`, `io`, `os` library names | present |
+
+These strings sit interleaved in one rodata cluster starting at `0x5CE436`
+(`invalid conversion specifier '%s'`, `invalid mode`, `rwa`, the croot "no
+file" error, `cannot open file '%s' (%s)`) and another at `0x5CD7F3` (`FILE*`,
+`attempt to use a closed file`) — i.e. `lualib.c`, `liolib.c`, `loslib.c` and
+`loadlib.c` are all compiled into the image. The Lua 5.4 stdlib set is there.
+
+What is **still unverified** is which of those libraries the *watchface*
+`lua_State` opens. The relevant support is: the Canopus framework's own
+installer watchface is documented to submit its payload "仅用普通 `io.open`" on
+this same Vela platform family, which only works if `io` is reachable from a
+watchface script. The installer watchface in this repo therefore uses plain
+`io.open` too, and **guards the call** so a device test distinguishes "`io`
+missing" from "path not writable".
+
+Either way the stock face scripts we recovered use no `io`/`os`; nothing in the
+shipped `dist/Pomodoro.face` depends on this question.
+
+The `miwear` Lua module exists (`luaopen_miwear`, `lua_module_miwear_close`,
+`miwear.topic`, `miwear_apps_available`) but its app-side surface is narrow;
+native-app publication (`appID`/`pageID` keys, `WATCHFACE`/`LUA`/`APPID`
+strings near the mlua init) is gated inside miwear's protobuf phone protocol.
 
 dataman fields seen in firmware (non-exhaustive): `timeHour/Minute/Second`,
 `dateYear/Month/Day/Week`, `healthStepCount/HeartRate/Calorie`,
 `systemStatusBattery/Charge/Bluetooth`, `weatherCurrentTemperature`, …
 
-## 7. Limitations / next steps
+## 7. Native apps on this firmware — the two real channels
+
+### 7a. Quickapp / rpk (Xiaomi's sanctioned third-party app channel)
+
+The AP image ships a full quickapp stack (`proxyquickapp/*`, AIOTJS engine,
+`ferry::PackageManager::installRpk`):
+
+- Transfer comes from the **phone app over protobuf**
+  (`miwear_pb_msg_prepare_install`, `quickapp_install_prepare/_start`,
+  `btmsg_mass_file_qapp_cb`), not from watch-local scripts.
+- The `.rpk` is a ZIP verified with mbedtls (`app_verify_info`,
+  `app_block.signature_block`, `verify_block_signature`, fingerprint stored in
+  `/quickapp/rpk_info.json`), unpacked to `/data/quickapp/app/<pkg>/`, config
+  in `/data/app/quickapp/config.json`, icons fetched from the phone.
+- Launchable names are protobuf app ids (`com.xiaomi.miwear.tomatotimer` — a
+  stock 番茄钟 already exists internally).
+
+This channel gives real app-list apps but requires Xiaomi's signing chain and
+the phone-side install protocol — not reproducible from a watchface.
+
+### 7b. Canopus kernel-module channel (what third-party devs actually use)
+
+Per [Canopus-Module-BluetoothAudio](https://github.com/Searchstars/Canopus-Module-BluetoothAudio)
+(and its docs), the Canopus framework provides:
+
+- a device-resident **manager**, itself delivered as an install-watchface,
+  exposing `/data/canopus/inbox` + `/canopus/install`;
+- **kernel modules** (NuttX `insmod` path) loaded from signed CMI1 payloads;
+- a **native app ABI**: `ModuleDescriptorV1` with
+  `FLAG_HAS_NATIVE_APP|FLAG_REGISTERS_LAUNCHER_ENTRY`, staged publication
+  `publish_native_app_stage(1) = app_install(app_desc, pages, n)` /
+  `(2) = launcher_add(app_id)` — exactly the launcher functions found in our
+  firmware (`app_launcher_add`, `launcher_page_*`, `sort_apps`);
+- per-firmware **target packs** with resolved symbol addresses.
+
+Result: the module's pages run at native level with the page framework
+(`on_create/on_resume/on_pause/on_destroy`), fully equivalent to a system app.
+Framework + target packs are closed source; module payloads must be signed.
+
+**Two corrections to earlier notes in this file** (verified against the
+upstream README and a fresh image scan):
+
+1. That project's supported targets are Band 10 Pro `3.101.036`, Band 10 Pro
+   `3.101.043` and Band 11 `4.100.139`. **Mi Band 9 Pro `3.1.175` is not a
+   Canopus target id.** The framework picks a private ABI backend from
+   `targets/<target-id>.env` and fails closed on an unknown target, so a
+   nine-pro pack has to be authored, not reused.
+2. The loader description above (`insmod` of a NuttX binfmt module) is how the
+   *framework* describes itself; this image contains **no such loader**. See
+   §10 for the measured boundary.
+
+### 7c. Our own target pack (do this instead of waiting for the framework)
+
+`tools/target_pack.py` turns the AP image into the per-firmware target pack:
+25 of 26 needed entry points resolve with exact firmware string matches, plus
+per-function field-offset evidence for reconstructing the descriptor layouts.
+Output: `native-app/targets/xiaomi-band-9-pro-3.1.175.{md,json}`. The one
+unresolved name is `app_lookup` — this firmware exposes the app registry
+through `app_install` / `packagemanager_app_unregister` but has no string by
+that name (it is deliberately *not* fuzzed onto `quickapp_get_appinfo`, which
+is unrelated).
+
+### Consequence for this repo
+
+- Watchface Lua (path shipped in `dist/`) can never appear in the app list.
+- The app-list 番茄钟 is implemented in `native-app/` as a Canopus module
+  skeleton + installer watchface (see `native-app/README.md`).
+
+## 8. Notifications
+
+- **Available from watchface Lua:** `vibrator` (haptics only).
+- **Notification tray is present in the firmware and now has addresses.**
+  Earlier notes here said tray insertion was merely "capability-gated / not
+  confirmed"; it is confirmed:
+
+  | symbol | address | notes |
+  |---|---|---|
+  | `lvx_notification_init_message` | `0x2C45F390` | builds a message object |
+  | `lvx_notification_insert_message` | `0x2C4F1C44` | 13 callers; same fn refs `notification_manager` + `lvx_notification_start_reminder` |
+  | `lvx_notification_insert_many_message` | `0x2C2B4D58` | batch |
+  | `lvx_notification_remove_message` | `0x2C4ED540` | |
+  | `lvx_notification_remove_all_appid_message` | `0x2C4DFB4E` | per-app clear |
+  | `lvx_notification_update_message_icon` | `0x2C2AFEAC` | in-place icon swap |
+
+  None of this is reachable from watchface Lua (no `io`/`os`, no notification
+  binding registered), which is exactly why "支持系统通知" is a native-app
+  requirement and not a watchface one. From a native module the haptics path is
+  `miwear_vibrator_run` `0x2C4602CC` / `miwear_vibrator_cancel` `0x2C460388`.
+- ANCS/dialog notification display itself is owned by the `notifications`
+  system app; the symbols above insert into its model.
+
+## 9. The loader boundary (measured)
+
+Searched `vela_ap.bin` **and** `vela_factory.bin` (plus `bl`/`bl2`) for every
+way native code could be brought in at runtime:
+
+| capability | occurrences |
+|---|---|
+| `0x7fELF` magic constant | 0 / 0 |
+| `binfmt` layer | 0 / 0 |
+| `NXFLAT` | 0 / 0 |
+| `insmod` / `rmmod` | 0 / 0 |
+| `dlopen` / `dlsym` | 0 / 0 |
+| `binfmt_loadmodule` / `binfmt_execmodule` | 0 / 0 |
+| `CONFIG_BINFMT` / `CONFIG_MODULE` | 0 / 0 |
+
+What *is* present: the NuttX task/group model (`group/*`,
+`task/task_posixspawn.c`), NSH as a **builtin** (`nsh_main` next to
+`task/task_start.c` in rodata; `/bin/nsh` next to NSH's `HOME=/root`), a
+file-backed `rammap`, procfs, and the AIOTJS native bridge
+(`jse_nativeproxy.cpp`, `NativeProxy`, `__folme_native_require__`, the
+`native://` URI regex). `LUA_CPATH=…?.so` is Lua's stock default string and
+`package.loadlib` would need the absent `dlopen`.
+
+Conclusion: the destination of native code (app registry, page callbacks,
+launcher, notification tray, haptics) is fully present and now addressable,
+but **no loader exists on this firmware** — so a Canopus-style module needs a
+one-time native bootstrap that we have not found statically.
+[`docs/userland-loader-blueprint.md`](userland-loader-blueprint.md) enumerates
+the four candidate channels, the resident-supervisor contract, and exactly what
+unblocks each one.
+
+## 10. Limitations / next steps
 
 - Stock face 14 is used as the container host, so its background images and
   header stay (dark clouds bg — fits the pomodoro aesthetic fine). A full
@@ -173,6 +335,8 @@ dataman fields seen in firmware (non-exhaustive): `timeHour/Minute/Second`,
 - Only `theme*.lua` payloads are swapped; themes 1–3 all run the same script.
   To differentiate themes, write three script variants within the 2468-byte
   budget.
-- System notification center integration would require the miwear app
-  (`luaopen_miwear`) surface, which stock watchfaces don't use; vibration is
-  the reliable notification channel available to watchface scripts.
+- System notification center integration is **not** available to watchface
+  scripts (no notification binding is registered in the Lua state; the
+  `miwear` module's surface is narrow), but it *is* available to a native
+  module — see §8, where the `lvx_notification_*` entry points are listed with
+  addresses. Vibration remains the only notification channel a watchface has.

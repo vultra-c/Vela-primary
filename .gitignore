@@ -1,6 +1,0 @@
-# Python bytecode caches from the analysis tools
-__pycache__/
-*.pyc
-
-# Local build output (module ELF, installer .face)
-pomodoro-watchface/native-app/build/
